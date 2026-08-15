@@ -1,0 +1,2 @@
+# Keep line endings stable across desktop (Windows) and cloud (Linux).
+* text=auto eol=lf
