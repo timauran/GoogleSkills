@@ -198,8 +198,8 @@ function cleanRawData() {
 
 /**
  * Reads canonical Raw Data as objects { date, provider, shift, rvu }
- * (date is ISO "yyyy-MM-dd"), filtered to included providers and deduped.
- * `log` is optional.
+ * (date is ISO "yyyy-MM-dd"), minus providers unchecked in the Provider
+ * List, deduped. `log` is optional.
  */
 function readAllRawData(ss, log) {
   const sheet = ss.getSheetByName(CONFIG.SHEETS.RAW_DATA);
@@ -210,7 +210,7 @@ function readAllRawData(ss, log) {
 
   const n        = sheet.getLastRow() - 1;
   const vals     = sheet.getRange(2, 1, n, 4).getValues();
-  const included = getIncludedProviders(ss, log);
+  const excluded = getExcludedProviders(ss, log);
 
   const map = new Map();
   vals.forEach(row => {
@@ -219,7 +219,7 @@ function readAllRawData(ss, log) {
     const shift    = String(row[2]).trim();
     const rvu      = parseFloat(row[3]) || 0;
     if (!iso || !provider) return;
-    if (included && !included.has(provider)) return;
+    if (excluded.has(normName(provider))) return;
     const key = recordKey({ iso, provider, shift });
     const ex  = map.get(key);
     if (!ex || rvu > ex.rvu) map.set(key, { date: iso, provider, shift, rvu });
@@ -275,16 +275,21 @@ function updateProviderList(ss, dataRows, log) {
   }
 
   const lastRow  = sheet.getLastRow();
-  const existing = {};
+  const existing = new Set();          // normalized names already on the list
   if (lastRow >= DATA_START) {
-    sheet.getRange(DATA_START, 1, lastRow - 1, 1).getValues().forEach((r, i) => {
-      const name = r[0].toString().trim();
-      if (name) existing[name] = DATA_START + i;
+    sheet.getRange(DATA_START, 1, lastRow - 1, 1).getValues().forEach(r => {
+      const name = normName(r[0]);
+      if (name) existing.add(name);
     });
   }
 
-  const seen  = new Set(dataRows.map(r => r.provider).filter(Boolean));
-  const toAdd = [...seen].filter(p => !existing[p]).sort();
+  // Dedupe incoming by normalized name too, keeping the report's spelling.
+  const seen = new Map();
+  dataRows.forEach(r => {
+    const k = normName(r.provider);
+    if (k && !seen.has(k)) seen.set(k, String(r.provider).trim());
+  });
+  const toAdd = [...seen.entries()].filter(([k]) => !existing.has(k)).map(([, p]) => p).sort();
 
   if (toAdd.length) {
     const insertRow = sheet.getLastRow() + 1;
@@ -305,17 +310,109 @@ function updateProviderList(ss, dataRows, log) {
 }
 
 /**
- * Returns a Set of provider names with Include = TRUE, or null (meaning
- * "include everyone") if the sheet is missing or empty. `log` is optional.
+ * Normalized provider name for matching: trimmed, internal whitespace
+ * collapsed, lowercase. "Dulai,  Harjot " and "DULAI, HARJOT" are the same rad.
  */
-function getIncludedProviders(ss, log) {
-  const sheet = ss.getSheetByName(CONFIG.SHEETS.PROVIDER_LIST);
+function normName(name) {
+  return String(name == null ? '' : name).trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/** True if a Provider List Include cell reads as checked (checkbox or "TRUE"/"yes"/"1" text). */
+function isIncludeChecked(v) {
+  if (v === true) return true;
+  if (v === false || v === '' || v == null) return false;
+  return ['true', 'yes', 'y', '1', 'x'].includes(String(v).trim().toLowerCase());
+}
+
+/**
+ * Returns a Set of NORMALIZED provider names that are explicitly unchecked
+ * in the Provider List. Opt-out, not opt-in: a provider who is missing from
+ * the list, or whose list spelling differs slightly from the report, is
+ * still reported rather than silently dropped. `log` is optional.
+ */
+function getExcludedProviders(ss, log) {
+  const excluded = new Set();
+  const sheet    = ss.getSheetByName(CONFIG.SHEETS.PROVIDER_LIST);
   if (!sheet || sheet.getLastRow() < 2) {
     if (log) log.push('Provider List: sheet missing or empty — including all providers');
-    return null;
+    return excluded;
   }
-  const vals = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
-  const included = new Set(vals.filter(r => r[0] && r[1] === true).map(r => r[0].toString().trim()));
-  if (log) log.push(`Provider List: ${included.size} provider(s) included in reporting`);
-  return included;
+  sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues().forEach(r => {
+    const name = normName(r[0]);
+    if (name && !isIncludeChecked(r[1])) excluded.add(name);
+  });
+  if (log) log.push(`Provider List: ${excluded.size} provider(s) excluded from reporting`);
+  return excluded;
+}
+
+/**
+ * Menu action: explain why a provider does or does not appear in the pivots
+ * and email. Prompts for any part of the name (e.g. "Dulai") and reports
+ * what Raw Data, the Provider List, and the aveRVU sheet say about them.
+ */
+function diagnoseProvider() {
+  const ui  = SpreadsheetApp.getUi();
+  const res = ui.prompt('Diagnose Provider',
+    'Enter any part of the provider name (e.g. "Dulai"):', ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return;
+  const q = normName(res.getResponseText());
+  if (!q) return;
+
+  const ss  = getDataSS();
+  const out = [];
+
+  // ── Raw Data ──
+  const raw      = ss.getSheetByName(CONFIG.SHEETS.RAW_DATA);
+  const rawVals  = raw && raw.getLastRow() > 1 ? raw.getRange(2, 1, raw.getLastRow() - 1, 4).getValues() : [];
+  const spellings = new Map(), shifts = new Set(), dates = [];
+  rawVals.forEach(r => {
+    if (!normName(r[1]).includes(q)) return;
+    const p = String(r[1]);
+    spellings.set(p, (spellings.get(p) || 0) + 1);
+    shifts.add(String(r[2]).trim());
+    const iso = toISO(r[0]); if (iso) dates.push(iso);
+  });
+  dates.sort();
+
+  out.push('RAW DATA');
+  if (!spellings.size) {
+    out.push('  ✗ No rows. The report data never reached Raw Data —');
+    out.push('    check the Run Log for skipped rows or header errors.');
+  } else {
+    spellings.forEach((n, p) => out.push(`  ✓ ${n} row(s) as ${JSON.stringify(p)}`));
+    out.push(`    Dates: ${isoToUS(dates[0])} → ${isoToUS(dates[dates.length - 1])}`);
+  }
+
+  // ── Provider List ──
+  const pl     = ss.getSheetByName(CONFIG.SHEETS.PROVIDER_LIST);
+  const plVals = pl && pl.getLastRow() > 1 ? pl.getRange(2, 1, pl.getLastRow() - 1, 2).getValues() : [];
+  const plHits = [];
+  plVals.forEach((r, i) => { if (normName(r[0]).includes(q)) plHits.push({ row: i + 2, name: r[0], inc: r[1] }); });
+
+  out.push('', 'PROVIDER LIST');
+  if (!plHits.length) out.push('  (not listed — will be included by default)');
+  plHits.forEach(h => {
+    const on = isIncludeChecked(h.inc);
+    out.push(`  Row ${h.row}: ${JSON.stringify(String(h.name))}  Include = ${JSON.stringify(h.inc)} `
+           + `(${typeof h.inc}) → ${on ? '✓ included' : '✗ EXCLUDED'}`);
+  });
+  spellings.forEach((n, p) => {
+    if (plHits.length && !plHits.some(h => String(h.name) === p)) {
+      out.push(`  ⚠ Raw Data spelling ${JSON.stringify(p)} differs from the list — now matched loosely.`);
+    }
+  });
+
+  // ── aveRVU (Productivity sheet needs a matching shift) ──
+  const aveMap   = loadAveRVU([], blankAlerts());
+  const noAve    = [...shifts].filter(s => !isNS(s) && !aveMap[s.toLowerCase()]);
+  const sched    = [...shifts].filter(s => !isNS(s));
+  out.push('', 'aveRVU (Productivity sheet)');
+  if (!sched.length) out.push('  Only Not Scheduled shifts — nothing to show on Productivity.');
+  else if (!noAve.length) out.push(`  ✓ All ${sched.length} scheduled shift name(s) have an AveRVU.`);
+  else {
+    out.push(`  ✗ ${noAve.length} shift name(s) missing from aveRVU — these are left off Productivity:`);
+    noAve.forEach(s => out.push(`     ${JSON.stringify(s)}`));
+  }
+
+  ui.alert(`Diagnose: "${res.getResponseText().trim()}"`, out.join('\n'), ui.ButtonSet.OK);
 }

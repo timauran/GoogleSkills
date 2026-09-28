@@ -27,6 +27,7 @@ function onOpen() {
       .addItem('Initial Setup (create all sheets)', 'createAndSetupSpreadsheet')
       .addItem('Install Daily Trigger',             'createDailyTrigger')
       .addItem('Clean / Dedupe Raw Data',           'cleanRawData')
+      .addItem('Diagnose Provider…',                'diagnoseProvider')
       .addItem('Show Spreadsheet Info',             'showSpreadsheetInfo'))
     .addToUi();
 }
