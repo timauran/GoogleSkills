@@ -8,7 +8,21 @@
  * drafts/sends the daily email. All alerts are consolidated into a
  * single admin email at the end.
  */
+/**
+ * Trigger handler. Runs under the central Email Automation Hub, which records
+ * successes and errors (never empty scans), alerts if the daily run errors or stops
+ * happening, and can pause it from the hub's Registry sheet. Falls back to a plain
+ * call if the EmailHub library is not attached.
+ */
 function checkRVUEmail() {
+  if (typeof EmailHub === 'undefined') return checkRVUEmailInner_();
+  return EmailHub.runJob('rvu-daily-report', checkRVUEmailInner_, {
+    project: 'RVU Production Report', handler: 'checkRVUEmail', intervalMin: 1440, phi: false
+  });
+}
+
+/** Returns {processed, summary} on success, {errors, errorMessages} on failure, 0 when no new email. */
+function checkRVUEmailInner_() {
   const log      = [];
   const runStart = new Date();
   const alerts   = blankAlerts();
@@ -22,19 +36,20 @@ function checkRVUEmail() {
     Logger.log(`FATAL: Cannot open data spreadsheet — ${e}`);
     GmailApp.sendEmail(CONFIG.MY_EMAIL, 'RVU Script FATAL: Cannot open data spreadsheet',
       `${e}\n\nHave you run createAndSetupSpreadsheet() yet?`);
-    return;
+    return { errors: 1, errorMessages: ['Cannot open data spreadsheet: ' + e] };
   }
 
   try {
     // 1 — find email & extract CSV
     const { content, thread } = findAndExtractCSV(log, alerts);
-    if (!content) { sendAdminSummaryEmail(alerts, log); logToSheet(ss, log); return; }
+    if (!content) { sendAdminSummaryEmail(alerts, log); logToSheet(ss, log); return 0; }
 
     // 2 — parse CSV
     const { dataRows } = parseCSV(content, log);
     if (!dataRows.length) {
       log.push('ERROR: No valid data rows — aborting.');
-      sendAdminSummaryEmail(alerts, log); logToSheet(ss, log); return;
+      sendAdminSummaryEmail(alerts, log); logToSheet(ss, log);
+      return { errors: 1, errorMessages: ['Report email had no valid data rows'] };
     }
 
     // 3 — load aveRVU reference & 4 — check shift mismatches
@@ -63,14 +78,16 @@ function checkRVUEmail() {
     }
 
     log.push(`=== Run complete in ${((new Date() - runStart) / 1000).toFixed(1)}s ===`);
+    logToSheet(ss, log);
+    return { processed: dataRows.length, summary: `Ingested ${dataRows.length} RVU rows` };
 
   } catch (e) {
     log.push(`FATAL ERROR: ${e}`);
     log.push(`Stack: ${e.stack}`);
     GmailApp.sendEmail(CONFIG.MY_EMAIL, 'RVU Script FATAL ERROR', `${e}\n\n${e.stack}`);
+    logToSheet(ss, log);
+    return { errors: 1, errorMessages: [String(e)] };
   }
-
-  logToSheet(ss, log);
 }
 
 // ============================================================

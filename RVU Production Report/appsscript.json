@@ -1,6 +1,14 @@
 {
   "timeZone": "America/Los_Angeles",
   "dependencies": {
+    "libraries": [
+      {
+        "userSymbol": "EmailHub",
+        "libraryId": "1sKT8KV-5rbw-5n8ZwGjukKCgJ0ZRfupm-0mVJGSLF1d6v94hGB2tW5-Q",
+        "version": "1",
+        "developmentMode": true
+      }
+    ]
   },
   "exceptionLogging": "STACKDRIVER",
   "runtimeVersion": "V8"
