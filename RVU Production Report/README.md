@@ -52,6 +52,22 @@ clasp push      # send changes back
   `data` (File → Import → Insert new sheet, rename it to `data`).
 - Rebuild / Email / Setup submenus as before.
 
+## Automatic daily email (workdays only)
+
+`createDailyTrigger()` (menu: Setup & Admin ▸ Install Daily Trigger) runs
+`checkRVUEmail` daily at ~10 AM Pacific (`CONFIG.REPORT_TRIGGER_HOUR`), after
+the ~9 AM report arrives. Each run ingests the report, then emails the
+**latest workday present in that report's data** that hasn't been emailed yet:
+
+- Weekend and holiday data is ingested (grayed on the pivots) but **never
+  emailed** — that data is unreliable. Toggle: `CONFIG.SKIP_NONWORKDAY_REPORTS`.
+- Holidays come from the **Holidays** sheet (Date | Holiday | Office Closed),
+  auto-seeded with observed federal holidays for this year and next. Uncheck a
+  holiday the practice works; add rows for extra closures.
+- The last emailed date is kept in Script Property `RVU_LAST_REPORTED_ISO`, so
+  overlapping reports never send the same day twice.
+- Emails are only **sent** when Config ▸ Send Mode is TRUE; otherwise drafted.
+
 ## Ingest behavior
 
 Raw Data is keyed on **Date + Provider + Shift** (case-insensitive). New rows

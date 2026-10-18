@@ -51,14 +51,15 @@ function readEmailConfig(ss, log) {
  * Builds and sends/drafts the daily production email for one day.
  * @param targetIso  optional ISO "yyyy-MM-dd"; defaults to the prior day.
  * @param forceDraft optional; always create a draft (used for historical dates).
+ * @return {boolean} true if an email was sent or drafted.
  */
 function createDailyEmailDraft(ss, allData, aveRVUMap, log, targetIso, forceDraft) {
   const dayIso  = targetIso || priorDayISO();
   const dayDisp = isoToUS(dayIso);
-  log.push(`Email draft: targeting ${dayIso}${targetIso ? ' (manual)' : ' (prior day)'}`);
+  log.push(`Email draft: targeting ${dayIso}${targetIso ? '' : ' (prior day)'}`);
 
   const dayData = allData.filter(r => r.date === dayIso);
-  if (!dayData.length) { log.push(`No data for ${dayIso} — skipping email draft`); return; }
+  if (!dayData.length) { log.push(`No data for ${dayIso} — skipping email draft`); return false; }
 
   // Per-provider summary
   const provMap = {};
@@ -105,6 +106,7 @@ function createDailyEmailDraft(ss, allData, aveRVUMap, log, targetIso, forceDraf
     GmailApp.createDraft(cfg.to, subject, '', options);
     log.push(`Email DRAFT created: to="${cfg.to}", ${provs.length} providers, ${nsProvs.length} with Not Scheduled`);
   }
+  return true;
 }
 
 /**

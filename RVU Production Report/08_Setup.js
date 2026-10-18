@@ -98,8 +98,10 @@ function createAndSetupSpreadsheet() {
 }
 
 /**
- * SETUP STEP 2 — run once.
- * Installs a daily trigger for checkRVUEmail() at ~3:30 AM Pacific.
+ * SETUP STEP 2 — run once (re-run any time; it replaces the old trigger).
+ * Installs a daily trigger for checkRVUEmail() at CONFIG.REPORT_TRIGGER_HOUR
+ * Pacific — after the ~9 AM report email arrives. Also seeds the Holidays
+ * sheet so weekend/holiday skipping is in place before the first run.
  */
 function createDailyTrigger() {
   ScriptApp.getProjectTriggers()
@@ -107,9 +109,29 @@ function createDailyTrigger() {
     .forEach(t => ScriptApp.deleteTrigger(t));
 
   ScriptApp.newTrigger('checkRVUEmail')
-    .timeBased().atHour(3).nearMinute(30).everyDays(1).create();
+    .timeBased().atHour(CONFIG.REPORT_TRIGGER_HOUR).everyDays(1)
+    .inTimezone(CONFIG.TIMEZONE).create();
 
-  Logger.log('✅ Trigger created: checkRVUEmail daily at ~3:30 AM (America/Los_Angeles)');
+  ensureHolidaysSheet(getDataSS(), null);
+
+  const msg = `Daily trigger set: checkRVUEmail every day at ~${CONFIG.REPORT_TRIGGER_HOUR}:00 (${CONFIG.TIMEZONE}).\n\n`
+            + 'Reports are emailed for workdays only; weekend and holiday data is ingested but not emailed. '
+            + 'Edit the Holidays sheet to change which days count as holidays.';
+  Logger.log('✅ ' + msg);
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { /* run from the editor — no UI */ }
+}
+
+/** Menu action: create/extend the Holidays sheet and jump to it. */
+function setupHolidaysSheet() {
+  const ss    = getDataSS();
+  const added = ensureHolidaysSheet(ss, null);
+  ss.setActiveSheet(ss.getSheetByName(CONFIG.SHEETS.HOLIDAYS));
+  const ui = SpreadsheetApp.getUi();
+  ui.alert('Holidays',
+    (added ? `Added ${added} federal holiday row(s).` : 'Already up to date for this year and next.')
+    + '\n\nUncheck "Office Closed" for any holiday the practice works, or add a row '
+    + '(Date as yyyy-MM-dd, name, checked) for an extra closure. Those dates get no daily email.',
+    ui.ButtonSet.OK);
 }
 
 /** Manual test runner — process immediately. */

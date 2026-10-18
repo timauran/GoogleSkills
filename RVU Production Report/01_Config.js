@@ -21,7 +21,7 @@
 // FIRST-TIME SETUP (run in this order from the Apps Script editor):
 //   1. Project Settings → Time zone: America/Los_Angeles
 //   2. createAndSetupSpreadsheet()   creates the data spreadsheet + sheets
-//   3. createDailyTrigger()          installs the 3:30 AM cron
+//   3. createDailyTrigger()          installs the ~10 AM cron (after the 9 AM report)
 //   4. runNow()                      process immediately as a test
 //
 // RAW DATA CONTRACT (for other scripts):
@@ -61,8 +61,21 @@ const CONFIG = {
     MONTHLY_SUMMARY: 'Monthly Summary',
     PROVIDER_LIST:   'Provider List',
     EMAIL_LIST:      'Email List',
-    CONFIG_SHEET:    'Config'
+    CONFIG_SHEET:    'Config',
+    HOLIDAYS:        'Holidays'
   },
+
+  // ── Automatic daily email ─────────────────────────────────────────
+  // The report email lands ~9 AM; the trigger runs after it.
+  REPORT_TRIGGER_HOUR: 10,              // 10 AM America/Los_Angeles (±15 min)
+
+  // Weekend and holiday data is unreliable, so no daily email goes out for
+  // those dates. The data is still ingested and shown (grayed) on the pivots.
+  SKIP_NONWORKDAY_REPORTS: true,
+
+  // Script Property holding the last date a daily email was sent/drafted
+  // for, so the same day is never reported twice when reports overlap.
+  PROP_LAST_REPORTED: 'RVU_LAST_REPORTED_ISO',
 
   // Column-name aliases, matched case-insensitively after trimming, first
   // match wins. Used for BOTH the emailed CSV and a manually imported

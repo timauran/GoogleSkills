@@ -19,13 +19,14 @@ function onOpen() {
       .addItem('Rebuild Monthly Summary',  'rebuildMonthly'))
     .addSeparator()
     .addSubMenu(ui.createMenu('📧 Email')
-      .addItem('Send / Draft Today\'s Email Now', 'sendEmailNow')
+      .addItem('Send / Draft Last Workday\'s Email Now', 'sendEmailNow')
       .addItem('Draft Email for a Prior Date…',   'draftEmailForDate')
       .addItem('Toggle Send ↔ Draft Mode',        'toggleSendMode'))
     .addSeparator()
     .addSubMenu(ui.createMenu('🔧 Setup & Admin')
       .addItem('Initial Setup (create all sheets)', 'createAndSetupSpreadsheet')
-      .addItem('Install Daily Trigger',             'createDailyTrigger')
+      .addItem('Install Daily Trigger (~10 AM)',    'createDailyTrigger')
+      .addItem('Holidays (no email on these days)', 'setupHolidaysSheet')
       .addItem('Clean / Dedupe Raw Data',           'cleanRawData')
       .addItem('Diagnose Provider…',                'diagnoseProvider')
       .addItem('Show Spreadsheet Info',             'showSpreadsheetInfo'))
@@ -81,10 +82,13 @@ function sendEmailNow() {
   const ss = getDataSS(), log = [];
   const allData   = readAllRawData(ss, log);
   const aveRVUMap = loadAveRVU(log, blankAlerts());
-  createDailyEmailDraft(ss, allData, aveRVUMap, log);
+  const day       = lastWorkdayBefore();      // never a weekend/holiday (e.g. Monday → Friday)
+  const ok        = createDailyEmailDraft(ss, allData, aveRVUMap, log, day);
+  if (ok) markReported(day, log);
   logToSheet(ss, log);
   const cfg = readEmailConfig(ss, log);
-  SpreadsheetApp.getUi().alert(cfg.sendMode ? 'Email sent.' : 'Draft created in Gmail.');
+  SpreadsheetApp.getUi().alert(!ok ? `No data for ${isoToUS(day)} — nothing sent.`
+    : `${cfg.sendMode ? 'Email sent' : 'Draft created in Gmail'} for ${isoToUS(day)}.`);
 }
 
 function draftEmailForDate() {

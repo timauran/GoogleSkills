@@ -174,54 +174,140 @@ function priorDayISO() {
   return `${d.getFullYear()}-${mo}-${da}`;
 }
 
-/** True if an ISO date falls on a weekend or observed US federal holiday. */
+/** Local-midnight Date → ISO "yyyy-MM-dd" (no timezone conversion). */
+function localDateToISO(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * True if an ISO date is a non-work day: Saturday, Sunday, or a holiday
+ * marked "Office Closed" in the Holidays sheet. Years the sheet has no
+ * rows for fall back to the computed federal list, so nothing silently
+ * becomes a workday when the sheet hasn't been extended yet.
+ * Drives both pivot gray-shading and daily-email skipping.
+ */
 function isoIsWeekendOrHoliday(iso) {
   const d = isoToLocalDate(iso);
   if (!d) return false;
   const dow = d.getDay();               // 0=Sun, 6=Sat
   if (dow === 0 || dow === 6) return true;
-  return isUSFederalHoliday(d);
+
+  const h = loadHolidays_();
+  if (h.years.has(d.getFullYear())) return h.closed.has(iso);
+  return federalHolidays(d.getFullYear()).some(x => x.iso === iso);
 }
 
-/** True if local-midnight Date d is an observed US federal holiday. */
-function isUSFederalHoliday(d) {
-  const yr = d.getFullYear();
+/** Most recent workday strictly before `iso` (defaults to today, Pacific). */
+function lastWorkdayBefore(iso) {
+  const d = isoToLocalDate(iso || Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyyy-MM-dd'));
+  for (let i = 0; i < 14; i++) {
+    d.setDate(d.getDate() - 1);
+    const x = localDateToISO(d);
+    if (!isoIsWeekendOrHoliday(x)) return x;
+  }
+  return localDateToISO(d);
+}
 
+/**
+ * Observed US federal holidays for a year: [{ iso, name }], sorted.
+ * Observed rule: Saturday → Friday, Sunday → Monday.
+ */
+function federalHolidays(yr) {
   const nthWD = (mo, wd, n) => {         // nth weekday of a month
     const first = new Date(yr, mo - 1, 1);
-    const day = ((wd - first.getDay()) + 7) % 7 + 1 + (n - 1) * 7;
-    return new Date(yr, mo - 1, day);
+    return new Date(yr, mo - 1, ((wd - first.getDay()) + 7) % 7 + 1 + (n - 1) * 7);
   };
   const lastWD = (mo, wd) => {           // last weekday of a month
     const last = new Date(yr, mo, 0);
     return new Date(yr, mo - 1, last.getDate() - ((last.getDay() - wd + 7) % 7));
   };
-  const obs = (date) => {                // observed: Sat→Fri, Sun→Mon
+  const obs = (date) => {
     const dw = date.getDay();
     if (dw === 6) return new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1);
     if (dw === 0) return new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
     return date;
   };
-  const eq = (holiday) => {
-    const o = obs(holiday);
-    return d.getFullYear() === o.getFullYear()
-        && d.getMonth()    === o.getMonth()
-        && d.getDate()     === o.getDate();
-  };
+  return [
+    [new Date(yr, 0, 1),   "New Year's Day"],
+    [nthWD(1, 1, 3),       'Martin Luther King Jr. Day'],
+    [nthWD(2, 1, 3),       "Presidents' Day"],
+    [lastWD(5, 1),         'Memorial Day'],
+    [new Date(yr, 5, 19),  'Juneteenth'],
+    [new Date(yr, 6, 4),   'Independence Day'],
+    [nthWD(9, 1, 1),       'Labor Day'],
+    [nthWD(10, 1, 2),      'Columbus Day'],
+    [new Date(yr, 10, 11), 'Veterans Day'],
+    [nthWD(11, 4, 4),      'Thanksgiving'],
+    [new Date(yr, 11, 25), 'Christmas Day']
+  ].map(([d, name]) => ({ iso: localDateToISO(obs(d)), name }))
+   .sort((a, b) => (a.iso < b.iso ? -1 : 1));
+}
 
-  return (
-    eq(new Date(yr, 0,  1))  ||   // New Year's Day
-    eq(nthWD(1, 1, 3))       ||   // MLK Day        (3rd Mon Jan)
-    eq(nthWD(2, 1, 3))       ||   // Presidents Day (3rd Mon Feb)
-    eq(lastWD(5, 1))         ||   // Memorial Day   (last Mon May)
-    eq(new Date(yr, 5, 19))  ||   // Juneteenth
-    eq(new Date(yr, 6,  4))  ||   // Independence Day
-    eq(nthWD(9, 1, 1))       ||   // Labor Day      (1st Mon Sep)
-    eq(nthWD(10, 1, 2))      ||   // Columbus Day   (2nd Mon Oct)
-    eq(new Date(yr, 10, 11)) ||   // Veterans Day
-    eq(nthWD(11, 4, 4))      ||   // Thanksgiving   (4th Thu Nov)
-    eq(new Date(yr, 11, 25))      // Christmas
-  );
+// ── Holidays sheet ──────────────────────────────────────────
+// Columns: Date (ISO text) | Holiday | Office Closed (checkbox).
+// Seeded with federal holidays; uncheck a day the practice works, or add
+// a row for an extra closure. Cached for the length of one execution.
+
+let _holidayCache = null;
+
+function loadHolidays_() {
+  if (_holidayCache) return _holidayCache;
+  const out = { closed: new Set(), years: new Set() };
+  try {
+    const sheet = getDataSS().getSheetByName(CONFIG.SHEETS.HOLIDAYS);
+    if (sheet && sheet.getLastRow() > 1) {
+      sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues().forEach(r => {
+        const iso = toISO(r[0]);
+        if (!iso) return;
+        out.years.add(Number(iso.slice(0, 4)));
+        if (r[2] === true || String(r[2]).trim().toLowerCase() === 'true') out.closed.add(iso);
+      });
+    }
+  } catch (e) {
+    Logger.log(`Holidays sheet unavailable, using federal list: ${e}`);
+  }
+  return (_holidayCache = out);
+}
+
+/**
+ * Creates the Holidays sheet if needed and appends the federal holidays
+ * for this year and next when that year has no rows yet. Never touches
+ * existing rows, so your edits survive. Safe to call every run.
+ * Returns the number of rows added.
+ */
+function ensureHolidaysSheet(ss, log) {
+  let sheet = ss.getSheetByName(CONFIG.SHEETS.HOLIDAYS);
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.SHEETS.HOLIDAYS);
+    sheet.getRange(1, 1, 1, 3).setValues([['Date', 'Holiday', 'Office Closed']])
+      .setFontWeight('bold').setBackground(CONFIG.COLOR.HEADER_DARK).setFontColor('white');
+    sheet.setFrozenRows(1);
+    sheet.setColumnWidth(1, 110);
+    sheet.setColumnWidth(2, 220);
+    sheet.setColumnWidth(3, 110);
+  }
+
+  const have = new Set();
+  if (sheet.getLastRow() > 1) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues()
+      .forEach(r => { const iso = toISO(r[0]); if (iso) have.add(Number(iso.slice(0, 4))); });
+  }
+
+  const thisYr = Number(Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyyy'));
+  const rows = [];
+  [thisYr, thisYr + 1].forEach(yr => {
+    if (!have.has(yr)) federalHolidays(yr).forEach(h => rows.push([h.iso, h.name, true]));
+  });
+  if (!rows.length) return 0;
+
+  const start = sheet.getLastRow() + 1;
+  sheet.getRange(start, 1, rows.length, 1).setNumberFormat('@');
+  sheet.getRange(start, 1, rows.length, 3).setValues(rows);
+  sheet.getRange(start, 3, rows.length, 1)
+    .setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
+  _holidayCache = null;                                   // re-read on next lookup
+  if (log) log.push(`Holidays: added ${rows.length} federal holiday row(s)`);
+  return rows.length;
 }
 
 /** Wrapper for Utilities.formatDate with the project timezone default. */

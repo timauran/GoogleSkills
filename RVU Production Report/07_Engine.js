@@ -61,14 +61,18 @@ function checkRVUEmailInner_() {
     updateProviderList(ss, dataRows, log);
 
     // 6 — read canonical data & 7 — rebuild pivots
+    ensureHolidaysSheet(ss, log);                 // keeps this + next year seeded
     const allData = readAllRawData(ss, log);
     updateTotalRVUSheet(ss, allData, log);
     updateNotScheduledSheet(ss, allData, log);
     updateThresholdSheet(ss, allData, aveRVUMap, log);
     updateMonthlySummary(ss, allData, log);
 
-    // 8 — daily email & 9 — admin summary
-    createDailyEmailDraft(ss, allData, aveRVUMap, log);
+    // 8 — daily email (workdays only, never the same day twice) & 9 — admin summary
+    const day = chooseReportDay(dataRows, log);
+    if (day) {
+      if (createDailyEmailDraft(ss, allData, aveRVUMap, log, day)) markReported(day, log);
+    }
     sendAdminSummaryEmail(alerts, log);
 
     // 10 — trash the source report email
@@ -88,6 +92,48 @@ function checkRVUEmailInner_() {
     logToSheet(ss, log);
     return { errors: 1, errorMessages: [String(e)] };
   }
+}
+
+// ============================================================
+// Report-day selection for the automatic daily email.
+// ------------------------------------------------------------
+// The day comes from the DATA, not the clock: the latest workday present
+// in this report that has not already been emailed. So:
+//   • a report containing only Saturday/Sunday/holiday data → no email
+//   • Monday's report (Sun data) → no email; Friday went out on Saturday
+//   • a report re-sending Friday alongside the weekend → Friday not re-sent
+// ============================================================
+
+/** Returns the ISO day to email for this batch, or null (reason logged). */
+function chooseReportDay(dataRows, log) {
+  const isos = [...new Set(dataRows.map(r => toISO(r.date)).filter(Boolean))].sort();
+  if (!isos.length) { log.push('Daily email: no dated rows — skipped'); return null; }
+
+  const skipped = CONFIG.SKIP_NONWORKDAY_REPORTS ? isos.filter(isoIsWeekendOrHoliday) : [];
+  const workdays = isos.filter(i => !skipped.includes(i));
+  if (skipped.length) {
+    log.push(`Daily email: not reporting weekend/holiday date(s) ${skipped.map(isoToUS).join(', ')}`);
+  }
+
+  const last   = PropertiesService.getScriptProperties().getProperty(CONFIG.PROP_LAST_REPORTED) || '';
+  const fresh  = workdays.filter(i => i > last);
+  if (!fresh.length) {
+    log.push(workdays.length
+      ? `Daily email: ${workdays.map(isoToUS).join(', ')} already reported (last: ${isoToUS(last)}) — skipped`
+      : 'Daily email: batch has only weekend/holiday data — skipped');
+    return null;
+  }
+  const day = fresh[fresh.length - 1];
+  log.push(`Daily email: reporting ${isoToUS(day)}`);
+  return day;
+}
+
+/** Records that `iso` has been emailed (only ever moves forward). */
+function markReported(iso, log) {
+  const props = PropertiesService.getScriptProperties();
+  const last  = props.getProperty(CONFIG.PROP_LAST_REPORTED) || '';
+  if (iso > last) props.setProperty(CONFIG.PROP_LAST_REPORTED, iso);
+  if (log) log.push(`Daily email: last reported date = ${isoToUS(iso > last ? iso : last)}`);
 }
 
 // ============================================================
