@@ -85,7 +85,10 @@ const CONFIG = {
   // ingest. Extra columns (e.g. ShiftAvg_90Day) are ignored: averages
   // come from the aveRVU sheet, not the report.
   COL_ALIASES: {
-    date:     ['SignDateTime', 'ShiftStartDateTime2', 'ShiftStartDateTime', 'ShiftStartDate', 'Date'],
+    // Shift-start columns win over SignDateTime when both are present:
+    // dating by sign time splits an overnight call (e.g. 5p-8a) across two
+    // days — reads signed after midnight land on the next date.
+    date:     ['ShiftStartDateTime2', 'ShiftStartDateTime', 'ShiftStartDate', 'SignDateTime', 'Date'],
     provider: ['RenderingProvider1', 'RenderingProvider', 'Provider'],
     shift:    ['Shift'],
     rvu:      ['WorkRVU', 'Work RVU', 'RVU']
