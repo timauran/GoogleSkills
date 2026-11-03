@@ -14,6 +14,7 @@ below are what any environment (desktop **or** cloud) needs to push and pull.
 | Apps Script ID (`.clasp.json`) | `1ae6afecQUBBfDHlHOaXTN_V_eDucMzLoseQ6_IRE67EPHQEWmJaHrSY5` |
 | aveRVU reference spreadsheet | `1rThkXpgdC9Vo1tYD3sWK30akVhNj8DueX2ZEZoV7Gcs` (sheet `aveRVU`) |
 | Data spreadsheet ID | stored in **Script Properties** as `RVU_SPREADSHEET_ID` (set by `createAndSetupSpreadsheet()`) |
+| QGenda iCal URL | stored in **Script Properties** as `QGENDA_ICAL_URL` (menu: Setup & Admin ▸ Set QGenda iCal URL…). Same feed as AutoAssign. **Secret — this repo is public, never commit it.** |
 
 `.clasp.json` is committed on purpose so the cloud environment can push without
 re-cloning. To work on this project:
@@ -41,6 +42,7 @@ clasp push      # send changes back
 | `07_Engine.js` | `checkRVUEmail()` nightly pipeline + manual email-scan ingest |
 | `08_Setup.js` | one-time setup, triggers, manual runners |
 | `09_ImportSheet.js` | ingest a manually imported `data` sheet into Raw Data |
+| `10_QGenda.js` | QGenda iCal vacation lookup for the daily email |
 | `00_Menu.js` | spreadsheet menu + thin action wrappers |
 
 ## Menu (⚙️ RVU Report)
@@ -85,3 +87,10 @@ One row per rotation per radiologist (sorted by last name), plus a separate
 (≥120%), plain (75–120%), or orange (<75%) — except rotations in
 `CONFIG.NO_HIGHLIGHT_SHIFTS` (e.g. `PM Imaging`) and Not Scheduled lines, which
 are never color-coded. Total RVU spans all of a radiologist's lines.
+
+**Worked on vacation**: rads who have RVU on a day QGenda shows them on a
+`VACATION …` shift (matched on the bracketed last name, e.g. `VACATION 2
+[SELPH]`) get a 🏖 by their name and are listed in a purple banner under the
+title with their day's total RVU. A report shift containing "vacation" is
+flagged the same way. No QGenda URL set, or the feed fails → the check is
+skipped and the email still goes out (see `10_QGenda.js`).

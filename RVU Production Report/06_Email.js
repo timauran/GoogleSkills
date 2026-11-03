@@ -91,11 +91,13 @@ function createDailyEmailDraft(ss, allData, aveRVUMap, log, targetIso, forceDraf
   // Rotations listed highest-RVU first within each rad's block
   provs.forEach(p => provMap[p].scheduledShifts.sort((a, b) => b.rvu - a.rvu));
 
-  // Rads with RVU on a vacation shift — called out in a banner up top
+  // Rads who read while on vacation — QGenda says VACATION that day, or the
+  // report itself carries a vacation shift. Called out in a banner up top.
+  const qVac = getVacationProviders(dayIso, provs, log);
   const vacation = [];
   provs.forEach(p => {
-    const vs = provMap[p].scheduledShifts.filter(s => isVacationShift(s.shift));
-    if (vs.length) vacation.push({ name: p, rvu: vs.reduce((t, s) => t + s.rvu, 0) });
+    const onShift = provMap[p].scheduledShifts.some(s => isVacationShift(s.shift));
+    if (qVac.has(p) || onShift) vacation.push({ name: p, rvu: provMap[p].totalRVU, label: qVac.get(p) || 'Vacation' });
   });
   if (vacation.length) log.push(`Email: worked on vacation — ${vacation.map(v => v.name).join('; ')}`);
 
@@ -161,7 +163,7 @@ function buildDraftHTML(date, provs, provMap, nsProvs, vacation) {
     if (!nRows) return '';
 
     // Cells that span the rad's whole block
-    const onVac     = d.scheduledShifts.some(s => isVacationShift(s.shift));
+    const onVac     = vacation.some(v => v.name === p);
     const nameCell  = `<td rowspan="${nRows}" style="${tdL}${RULE}font-weight:bold;vertical-align:middle;">${p}${onVac ? ' 🏖' : ''}</td>`;
     const totalCell = `<td rowspan="${nRows}" style="${tdRb}${RULE}color:#1a5276;vertical-align:middle;">${d.totalRVU.toFixed(1)}</td>`;
 
@@ -225,7 +227,7 @@ function buildDraftHTML(date, provs, provMap, nsProvs, vacation) {
   <strong style="font-size:13px;color:#1a5276;">RVU Daily Production — ${date}</strong>
 </div>
 ${vacation.length ? `<div style="background:${VAC_BG};border-left:4px solid ${VAC_FG};padding:4px 10px;margin-bottom:6px;font-size:11px;color:${VAC_FG};">
-  🏖 <strong>Worked while on vacation:</strong> ${vacation.map(v => `${v.name} (${v.rvu.toFixed(1)} RVU)`).join(' &middot; ')}
+  🏖 <strong>Read while scheduled on vacation:</strong> ${vacation.map(v => `${v.name} &ndash; ${v.label} (${v.rvu.toFixed(1)} RVU)`).join(' &middot; ')}
 </div>` : ''}
 
 <table style="${tableStyle}">

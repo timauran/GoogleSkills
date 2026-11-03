@@ -119,6 +119,11 @@ const CONFIG = {
   // colour-coded or reported as an aveRVU mismatch.
   VACATION_SHIFTS: ['vacation'],
 
+  // Script Property holding the QGenda iCal URL (contains a secret key —
+  // never commit it). Used to flag rads who read while scheduled on
+  // VACATION in QGenda. Set via Setup & Admin ▸ Set QGenda iCal URL….
+  PROP_QGENDA_URL: 'QGENDA_ICAL_URL',
+
   // Pivot sheet column widths (px)
   DATE_COL_WIDTH:  72,
   LABEL_COL_WIDTH: 160,

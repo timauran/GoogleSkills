@@ -27,6 +27,7 @@ function onOpen() {
       .addItem('Initial Setup (create all sheets)', 'createAndSetupSpreadsheet')
       .addItem('Install Daily Trigger (~10 AM)',    'createDailyTrigger')
       .addItem('Holidays (no email on these days)', 'setupHolidaysSheet')
+      .addItem('Set QGenda iCal URL…',              'setQGendaUrl')
       .addItem('Clean / Dedupe Raw Data',           'cleanRawData')
       .addItem('Diagnose Provider…',                'diagnoseProvider')
       .addItem('Show Spreadsheet Info',             'showSpreadsheetInfo'))
