@@ -91,7 +91,15 @@ function createDailyEmailDraft(ss, allData, aveRVUMap, log, targetIso, forceDraf
   // Rotations listed highest-RVU first within each rad's block
   provs.forEach(p => provMap[p].scheduledShifts.sort((a, b) => b.rvu - a.rvu));
 
-  const html = buildDraftHTML(dayDisp, provs, provMap, nsProvs);
+  // Rads with RVU on a vacation shift — called out in a banner up top
+  const vacation = [];
+  provs.forEach(p => {
+    const vs = provMap[p].scheduledShifts.filter(s => isVacationShift(s.shift));
+    if (vs.length) vacation.push({ name: p, rvu: vs.reduce((t, s) => t + s.rvu, 0) });
+  });
+  if (vacation.length) log.push(`Email: worked on vacation — ${vacation.map(v => v.name).join('; ')}`);
+
+  const html = buildDraftHTML(dayDisp, provs, provMap, nsProvs, vacation);
 
   const cfg     = readEmailConfig(ss, log);
   const options = { htmlBody: html };
@@ -119,7 +127,10 @@ function createDailyEmailDraft(ss, allData, aveRVUMap, log, targetIso, forceDraf
  * The RVU Obtained cell is shaded against the rotation's average:
  * green ≥120%, plain 75–120%, orange <75% (CONFIG.THRESHOLD_*).
  */
-function buildDraftHTML(date, provs, provMap, nsProvs) {
+function buildDraftHTML(date, provs, provMap, nsProvs, vacation) {
+  vacation = vacation || [];
+  const VAC_BG = '#e8daef', VAC_FG = '#6c3483';
+  const vacTag = `<span style="background:${VAC_BG};color:${VAC_FG};font-weight:bold;font-size:9px;padding:0 4px;margin-left:4px;border-radius:2px;">VACATION</span>`;
   const tableStyle = 'border-collapse:collapse;margin:0 0 4px;';
   const thL = 'padding:3px 10px 3px 6px;text-align:left;font-size:10px;white-space:nowrap;color:#fff;';
   const thR = 'padding:3px 10px 3px 6px;text-align:right;font-size:10px;white-space:nowrap;color:#fff;';
@@ -150,13 +161,14 @@ function buildDraftHTML(date, provs, provMap, nsProvs) {
     if (!nRows) return '';
 
     // Cells that span the rad's whole block
-    const nameCell  = `<td rowspan="${nRows}" style="${tdL}${RULE}font-weight:bold;vertical-align:middle;">${p}</td>`;
+    const onVac     = d.scheduledShifts.some(s => isVacationShift(s.shift));
+    const nameCell  = `<td rowspan="${nRows}" style="${tdL}${RULE}font-weight:bold;vertical-align:middle;">${p}${onVac ? ' 🏖' : ''}</td>`;
     const totalCell = `<td rowspan="${nRows}" style="${tdRb}${RULE}color:#1a5276;vertical-align:middle;">${d.totalRVU.toFixed(1)}</td>`;
 
     const lines = d.scheduledShifts.map(s => {
       const pct = s.ave > 0 ? (s.rvu / s.ave) * 100 : null;
       return {
-        rotation: s.shift,
+        rotation: isVacationShift(s.shift) ? `<span style="color:${VAC_FG};">${s.shift}</span>${vacTag}` : s.shift,
         ave:      s.ave > 0 ? s.ave.toFixed(1) : DASH,
         obtained: s.rvu.toFixed(1),
         pct:      pct === null ? DASH : `${pct.toFixed(0)}%`,
@@ -212,6 +224,9 @@ function buildDraftHTML(date, provs, provMap, nsProvs) {
 <div style="background:#d6e4f0;border-left:4px solid #1a5276;padding:5px 10px;margin-bottom:6px;">
   <strong style="font-size:13px;color:#1a5276;">RVU Daily Production — ${date}</strong>
 </div>
+${vacation.length ? `<div style="background:${VAC_BG};border-left:4px solid ${VAC_FG};padding:4px 10px;margin-bottom:6px;font-size:11px;color:${VAC_FG};">
+  🏖 <strong>Worked while on vacation:</strong> ${vacation.map(v => `${v.name} (${v.rvu.toFixed(1)} RVU)`).join(' &middot; ')}
+</div>` : ''}
 
 <table style="${tableStyle}">
   <thead>
@@ -233,7 +248,7 @@ function buildDraftHTML(date, provs, provMap, nsProvs) {
   <span style="background:${CONFIG.COLOR.GREEN_PCT};color:#1e7e34;padding:0 4px;">&ge;${CONFIG.THRESHOLD_GREEN}%</span>
   <span style="padding:0 4px;">${CONFIG.THRESHOLD_ORANGE}&ndash;${CONFIG.THRESHOLD_GREEN}%</span>
   <span style="background:${CONFIG.COLOR.ORANGE_PCT};color:#b05000;padding:0 4px;">&lt;${CONFIG.THRESHOLD_ORANGE}%</span>
-  &nbsp;&middot;&nbsp; ${CONFIG.NO_HIGHLIGHT_SHIFTS.join(', ')} and Not Scheduled are not colour-coded.
+  &nbsp;&middot;&nbsp; ${CONFIG.NO_HIGHLIGHT_SHIFTS.join(', ')}, Vacation and Not Scheduled are not colour-coded.
 </p>
 
 <p style="margin:0;line-height:1.6;">&nbsp;</p>

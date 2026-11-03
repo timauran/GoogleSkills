@@ -113,6 +113,12 @@ const CONFIG = {
   // shift name. Not Scheduled lines are exempt regardless of this list.
   NO_HIGHLIGHT_SHIFTS: ['PM Imaging'],
 
+  // Shift names (case-insensitive substring) meaning the rad was scheduled
+  // on vacation. Any RVU on them is called out in the daily email — a
+  // banner under the title plus a tag on the rotation — and never
+  // colour-coded or reported as an aveRVU mismatch.
+  VACATION_SHIFTS: ['vacation'],
+
   // Pivot sheet column widths (px)
   DATE_COL_WIDTH:  72,
   LABEL_COL_WIDTH: 160,

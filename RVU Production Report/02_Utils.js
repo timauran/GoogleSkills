@@ -83,7 +83,17 @@ function isWeekendShift(shift) {
 function isNoHighlightShift(shift) {
   const s = String(shift).trim().toLowerCase();
   if (!s || isNS(s)) return true;
-  return CONFIG.NO_HIGHLIGHT_SHIFTS.some(x => s.includes(String(x).toLowerCase()));
+  return CONFIG.NO_HIGHLIGHT_SHIFTS.some(x => s.includes(String(x).toLowerCase())) || isVacationShift(s);
+}
+
+/**
+ * True if a shift name marks a vacation day (CONFIG.VACATION_SHIFTS,
+ * case-insensitive substring). RVU on these is flagged in the daily email
+ * rather than judged against an average.
+ */
+function isVacationShift(shift) {
+  const s = String(shift).trim().toLowerCase();
+  return !!s && CONFIG.VACATION_SHIFTS.some(x => s.includes(String(x).toLowerCase()));
 }
 
 // ── Provider names ──────────────────────────────────────────

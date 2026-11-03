@@ -165,7 +165,7 @@ function checkShiftMismatches(dataRows, aveRVUMap, log, adminAlerts) {
   const unmatched = new Set();
   dataRows.forEach(r => {
     const key = r.shift.trim().toLowerCase();
-    if (key !== CONFIG.NOT_SCHEDULED_KEY && !isWeekendShift(r.shift) && !aveRVUMap[key]) {
+    if (key !== CONFIG.NOT_SCHEDULED_KEY && !isWeekendShift(r.shift) && !isVacationShift(r.shift) && !aveRVUMap[key]) {
       unmatched.add(r.shift);
     }
   });
