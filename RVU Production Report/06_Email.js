@@ -217,7 +217,10 @@ function buildDraftHTML(date, provs, provMap, nsProvs, vacation) {
           <td style="${tdL}font-weight:bold;">${p}</td>
           <td style="${tdR}">${provMap[p].nsRVU.toFixed(1)}</td>
         </tr>`;
-      }).join('');
+      }).join('') + `<tr style="background:${CONFIG.COLOR.SUBTOTAL_NS};">
+          <td style="${tdL}font-weight:bold;color:#b45f06;border-top:2px solid #b45f06;">TOTAL</td>
+          <td style="${tdRb}color:#b45f06;border-top:2px solid #b45f06;">${nsProvs.reduce((s, p) => s + provMap[p].nsRVU, 0).toFixed(1)}</td>
+        </tr>`;
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
 <body style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#222;margin:0;padding:8px;">
