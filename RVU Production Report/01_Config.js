@@ -82,8 +82,8 @@ const CONFIG = {
   // sheet (see resolveColumns in 02_Utils). The report has renamed its
   // date column more than once — add new spellings to the front of the
   // list rather than replacing the old ones, so historical files still
-  // ingest. Extra columns (e.g. ShiftAvg_90Day) are ignored: averages
-  // come from the aveRVU sheet, not the report.
+  // ingest. Extra columns (e.g. ShiftAvg_90Day, the rolling 90-day average)
+  // are ignored and never stored: averages come from the aveRVU sheet.
   COL_ALIASES: {
     // Shift-start columns win over SignDateTime when both are present:
     // dating by sign time splits an overnight call (e.g. 5p-8a) across two

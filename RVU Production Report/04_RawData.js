@@ -33,6 +33,13 @@ function ensureRawHeaders(sheet) {
     sheet.setColumnWidth(1, 110);
   }
   sheet.getRange(1, 1, 1, headers.length).setNumberFormat('@');
+
+  // Raw Data is exactly the canonical columns. Anything to the right (e.g.
+  // the report's old "L90D Shift Avg") is never re-sorted with its rows, so
+  // it drifts out of alignment — drop it rather than leave misleading data.
+  if (sheet.getLastColumn() > headers.length) {
+    sheet.deleteColumns(headers.length + 1, sheet.getMaxColumns() - headers.length);
+  }
 }
 
 /**
