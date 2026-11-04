@@ -101,7 +101,7 @@ function createDailyEmailDraft(ss, allData, aveRVUMap, log, targetIso, forceDraf
   });
   if (vacation.length) log.push(`Email: worked on vacation — ${vacation.map(v => v.name).join('; ')}`);
 
-  const html = buildDraftHTML(dayDisp, provs, provMap, nsProvs, vacation);
+  const html = buildDraftHTML(dayDisp, provs, provMap, nsProvs, vacation, ss.getUrl());
 
   const cfg     = readEmailConfig(ss, log);
   const options = { htmlBody: html };
@@ -129,7 +129,7 @@ function createDailyEmailDraft(ss, allData, aveRVUMap, log, targetIso, forceDraf
  * The RVU Obtained cell is shaded against the rotation's average:
  * green ≥120%, plain 75–120%, orange <75% (CONFIG.THRESHOLD_*).
  */
-function buildDraftHTML(date, provs, provMap, nsProvs, vacation) {
+function buildDraftHTML(date, provs, provMap, nsProvs, vacation, ssUrl) {
   vacation = vacation || [];
   const VAC_BG = '#e8daef', VAC_FG = '#6c3483';
   const vacTag = `<span style="background:${VAC_BG};color:${VAC_FG};font-weight:bold;font-size:9px;padding:0 4px;margin-left:4px;border-radius:2px;">VACATION</span>`;
@@ -268,6 +268,10 @@ ${vacation.length ? `<div style="background:${VAC_BG};border-left:4px solid ${VA
   </thead>
   <tbody>${nsRows}</tbody>
 </table>
+${ssUrl ? `
+<p style="margin:12px 0 0;font-size:10px;">
+  <a href="${ssUrl}" style="color:#1a5276;">Open the RVU Production Report spreadsheet &rarr;</a>
+</p>` : ''}
 </body></html>`;
 }
 

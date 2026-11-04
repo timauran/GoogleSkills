@@ -102,12 +102,18 @@ function checkRVUEmailInner_() {
 //   • a report containing only Saturday/Sunday/holiday data → no email
 //   • Monday's report (Sun data) → no email; Friday went out on Saturday
 //   • a report re-sending Friday alongside the weekend → Friday not re-sent
+//   • today is never reported: rows are dated by SignDateTime, so reads
+//     signed after midnight on last night's call carry today's date even
+//     though the day has barely started
 // ============================================================
 
 /** Returns the ISO day to email for this batch, or null (reason logged). */
 function chooseReportDay(dataRows, log) {
-  const isos = [...new Set(dataRows.map(r => toISO(r.date)).filter(Boolean))].sort();
-  if (!isos.length) { log.push('Daily email: no dated rows — skipped'); return null; }
+  const today = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyyy-MM-dd');
+  const all   = [...new Set(dataRows.map(r => toISO(r.date)).filter(Boolean))].sort();
+  const isos  = all.filter(i => i < today);
+  if (isos.length < all.length) log.push(`Daily email: ignoring today/future date(s) ${all.filter(i => i >= today).map(isoToUS).join(', ')} — day not complete`);
+  if (!isos.length) { log.push('Daily email: no completed dated rows — skipped'); return null; }
 
   const skipped = CONFIG.SKIP_NONWORKDAY_REPORTS ? isos.filter(isoIsWeekendOrHoliday) : [];
   const workdays = isos.filter(i => !skipped.includes(i));
@@ -115,7 +121,7 @@ function chooseReportDay(dataRows, log) {
     log.push(`Daily email: not reporting weekend/holiday date(s) ${skipped.map(isoToUS).join(', ')}`);
   }
 
-  const last   = PropertiesService.getScriptProperties().getProperty(CONFIG.PROP_LAST_REPORTED) || '';
+  const last   = getLastReported_();
   const fresh  = workdays.filter(i => i > last);
   if (!fresh.length) {
     log.push(workdays.length
@@ -128,10 +134,29 @@ function chooseReportDay(dataRows, log) {
   return day;
 }
 
+/**
+ * Last emailed ISO date ('' if none). One-time repair: before today-dates
+ * were excluded, the 11/3 and 11/4 runs emailed same-day stubs and pushed
+ * the marker to 2026-11-04, which would block the real 11/3 and 11/4
+ * emails. Roll it back to 11/2 (the last day correctly emailed) once.
+ */
+function getLastReported_() {
+  const props = PropertiesService.getScriptProperties();
+  let last = props.getProperty(CONFIG.PROP_LAST_REPORTED) || '';
+  if (!props.getProperty('RVU_FIX_SAMEDAY_20261104')) {
+    if (last === '2026-11-03' || last === '2026-11-04') {
+      last = '2026-11-02';
+      props.setProperty(CONFIG.PROP_LAST_REPORTED, last);
+    }
+    props.setProperty('RVU_FIX_SAMEDAY_20261104', 'done');
+  }
+  return last;
+}
+
 /** Records that `iso` has been emailed (only ever moves forward). */
 function markReported(iso, log) {
   const props = PropertiesService.getScriptProperties();
-  const last  = props.getProperty(CONFIG.PROP_LAST_REPORTED) || '';
+  const last  = getLastReported_();
   if (iso > last) props.setProperty(CONFIG.PROP_LAST_REPORTED, iso);
   if (log) log.push(`Daily email: last reported date = ${isoToUS(iso > last ? iso : last)}`);
 }

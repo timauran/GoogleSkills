@@ -411,7 +411,9 @@ function logToSheet(ss, logLines) {
 
     sheet.getRange('A:B').setNumberFormat('@');
     sheet.insertRowsBefore(2, rows.length);       // newest at the top
-    sheet.getRange(2, 1, rows.length, 2).setValues(rows);
+    // Inserted rows don't inherit the text format, so a "=== …" banner line
+    // would be parsed as a formula (#ERROR!) — format the block explicitly.
+    sheet.getRange(2, 1, rows.length, 2).setNumberFormat('@').setValues(rows);
 
     const maxRows = 2000;
     const total   = sheet.getLastRow() - 1;        // exclude header
